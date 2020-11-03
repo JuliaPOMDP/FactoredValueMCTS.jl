@@ -32,8 +32,8 @@ end
 end
 
 
-# JointMCTS tree has to be different, to efficiently encode Q-stats
-mutable struct JointMCTSTree{S,A,CS<:CoordinationStatistics}
+# FVMCTS tree has to be different, to efficiently encode Q-stats
+mutable struct FVMCTSTree{S,A,CS<:CoordinationStatistics}
 
     # To track if state node in tree already
     # NOTE: We don't strictly need this at all if no tree reuse...
@@ -54,13 +54,13 @@ mutable struct JointMCTSTree{S,A,CS<:CoordinationStatistics}
 end
 
 # Just a glorified wrapper now
-function JointMCTSTree(all_agent_actions::Vector{AbstractVector{A}},
+function FVMCTSTree(all_agent_actions::Vector{AbstractVector{A}},
                        coordination_stats::CS,
                        init_state::AbstractVector{S},
                        lock::ReentrantLock,
                        sz::Int64=10000) where {S, A, CS <: CoordinationStatistics}
 
-    return JointMCTSTree{S,A,CS}(Dict{typeof(init_state),Int64}(),
+    return FVMCTSTree{S,A,CS}(Dict{typeof(init_state),Int64}(),
                                  sizehint!(Int[], sz),
                                  sizehint!(typeof(init_state)[], sz),
                                  all_agent_actions,
@@ -71,26 +71,26 @@ end # function
 
 
 
-Base.isempty(t::JointMCTSTree) = isempty(t.state_map)
-state_nodes(t::JointMCTSTree) = (JointStateNode(t, id) for id in 1:length(t.total_n))
+Base.isempty(t::FVMCTSTree) = isempty(t.state_map)
+state_nodes(t::FVMCTSTree) = (FVStateNode(t, id) for id in 1:length(t.total_n))
 
-struct JointStateNode{S}
-    tree::JointMCTSTree{S}
+struct FVStateNode{S}
+    tree::FVMCTSTree{S}
     id::Int64
 end
 
-#get_state_node(tree::JointMCTSTree, id) = JointStateNode(tree, id)
+#get_state_node(tree::FVMCTSTree, id) = FVStateNode(tree, id)
 
 # accessors for state nodes
-@inline state(n::JointStateNode) = n.tree.s_labels[n.id]
-@inline total_n(n::JointStateNode) = n.tree.total_n[n.id]
+@inline state(n::FVStateNode) = n.tree.s_labels[n.id]
+@inline total_n(n::FVStateNode) = n.tree.total_n[n.id]
 
 ## No need for `children` or ActionNode just yet
 
-mutable struct JointMCTSPlanner{S, A, SE, CS <: CoordinationStatistics, RNG <: AbstractRNG} <: AbstractMCTSPlanner{JointMDP{S,A}}
+mutable struct FVMCTSPlanner{S, A, SE, CS <: CoordinationStatistics, RNG <: AbstractRNG} <: AbstractMCTSPlanner{JointMDP{S,A}}
     solver::FVMCTSSolver
     mdp::JointMDP{S,A}
-    tree::JointMCTSTree{S,A,CS}
+    tree::FVMCTSTree{S,A,CS}
     solved_estimate::SE
     rng::RNG
 end
@@ -121,12 +121,12 @@ function varel_joint_mcts_planner(solver::FVMCTSSolver,
                                                    )
 
     # Create tree FROM CURRENT STATE
-    tree = JointMCTSTree(all_agent_actions, ve_stats,
+    tree = FVMCTSTree(all_agent_actions, ve_stats,
                          init_state, ReentrantLock(), solver.n_iterations)
     se = convert_estimator(solver.estimate_value, solver, mdp)
 
-    return JointMCTSPlanner(solver, mdp, tree, se, solver.rng)
-end # end JointMCTSPlanner
+    return FVMCTSPlanner(solver, mdp, tree, se, solver.rng)
+end # end FVMCTSPlanner
 
 
 function maxplus_joint_mcts_planner(solver::FVMCTSSolver,
@@ -161,16 +161,16 @@ function maxplus_joint_mcts_planner(solver::FVMCTSSolver,
                                                      Dict{typeof(init_state),PerStateMPStats}())
 
     # Create tree FROM CURRENT STATE
-    tree = JointMCTSTree(all_agent_actions, mp_stats,
+    tree = FVMCTSTree(all_agent_actions, mp_stats,
                          init_state, ReentrantLock(), solver.n_iterations)
     se = convert_estimator(solver.estimate_value, solver, mdp)
 
-    return JointMCTSPlanner(solver, mdp, tree, se, solver.rng)
+    return FVMCTSPlanner(solver, mdp, tree, se, solver.rng)
 end
 
 
 # Reset tree.
-function clear_tree!(planner::JointMCTSPlanner)
+function clear_tree!(planner::FVMCTSPlanner)
 
     # Clear out state hash dict entirely
     empty!(planner.tree.state_map)
@@ -186,9 +186,9 @@ function clear_tree!(planner::JointMCTSPlanner)
     clear_statistics!(planner.tree.coordination_stats)
 end
 
-# function get_state_node(tree::JointMCTSTree, s, planner::JointMCTSPlanner)
+# function get_state_node(tree::FVMCTSTree, s, planner::FVMCTSPlanner)
 #     if haskey(tree.state_map, s)
-#         return JointStateNode(tree, tree.state_map[s]) # Is this correct? Not equiv to vanilla
+#         return FVStateNode(tree, tree.state_map[s]) # Is this correct? Not equiv to vanilla
 #     else
 #         return insert_node!(tree, planner, s)
 #     end
@@ -212,16 +212,16 @@ function POMDPs.solve(solver::FVMCTSSolver, mdp::JointMDP)
 end
 
 
-# IMP: Overriding action for JointMCTSPlanner here
+# IMP: Overriding action for FVMCTSPlanner here
 # NOTE: Hardcoding no tree reuse for now
-function POMDPs.action(planner::JointMCTSPlanner, s)
+function POMDPs.action(planner::FVMCTSPlanner, s)
     clear_tree!(planner) # Always call this at the top
     plan!(planner, s)
     action =  coordinate_action(planner.mdp, planner.tree, s)
     return action
 end
 
-function POMDPModelTools.action_info(planner::JointMCTSPlanner, s)
+function POMDPModelTools.action_info(planner::FVMCTSPlanner, s)
     clear_tree!(planner) # Always call this at the top
     plan!(planner, s)
     action = coordinate_action(planner.mdp, planner.tree, s)
@@ -233,12 +233,12 @@ end
 
 # Could reuse plan! from vanilla.jl. But I don't like
 # calling an element of an abstract type like AbstractMCTSPlanner
-function plan!(planner::JointMCTSPlanner, s)
+function plan!(planner::FVMCTSPlanner, s)
     planner.tree = build_tree(planner, s)
 end
 
 # Build_Tree can be called on the assumption that no reuse AND tree is reinitialized
-function build_tree(planner::JointMCTSPlanner, s::AbstractVector{S}) where S
+function build_tree(planner::FVMCTSPlanner, s::AbstractVector{S}) where S
 
     n_iterations = planner.solver.n_iterations
     depth = planner.solver.depth
@@ -251,7 +251,7 @@ function build_tree(planner::JointMCTSPlanner, s::AbstractVector{S}) where S
     return planner.tree
 end
 
-function simulate(planner::JointMCTSPlanner, node::JointStateNode, depth::Int64)
+function simulate(planner::FVMCTSPlanner, node::FVStateNode, depth::Int64)
 
     mdp = planner.mdp
     rng = planner.rng
@@ -282,7 +282,7 @@ function simulate(planner::JointMCTSPlanner, node::JointStateNode, depth::Int64)
         # TODO define estimate_value
         q = r .+ discount(mdp) * estimate_value(planner.solved_estimate, planner.mdp, sp, depth - 1)
     else
-        q = r .+ discount(mdp) * simulate(planner, JointStateNode(tree, spid) , depth - 1)
+        q = r .+ discount(mdp) * simulate(planner, FVStateNode(tree, spid) , depth - 1)
     end
 
     ## Not bothering with tree vis right now
@@ -298,7 +298,7 @@ function simulate(planner::JointMCTSPlanner, node::JointStateNode, depth::Int64)
     return q
 end
 
-POMDPLinter.@POMDP_require simulate(planner::JointMCTSPlanner, s, depth::Int64) begin
+POMDPLinter.@POMDP_require simulate(planner::FVMCTSPlanner, s, depth::Int64) begin
     mdp = planner.mdp
     P = typeof(mdp)
     @assert P <: JointMDP       # req does different thing?
@@ -325,7 +325,7 @@ end
 
 
 
-function insert_node!(tree::JointMCTSTree{S,A,CS}, planner::JointMCTSPlanner,
+function insert_node!(tree::FVMCTSTree{S,A,CS}, planner::FVMCTSPlanner,
                       s::AbstractVector{S}) where {S,A,CS <: CoordinationStatistics}
 
     lock(tree.lock) do
@@ -340,10 +340,10 @@ function insert_node!(tree::JointMCTSTree{S,A,CS}, planner::JointMCTSPlanner,
     ls = lock(tree.lock) do
         length(tree.s_labels)
     end
-    return JointStateNode(tree, ls)
+    return FVStateNode(tree, ls)
 end
 
-POMDPLinter.@POMDP_require insert_node!(tree::JointMCTSTree, planner::JointMCTSPlanner, s) begin
+POMDPLinter.@POMDP_require insert_node!(tree::FVMCTSTree, planner::FVMCTSPlanner, s) begin
 
     P = typeof(planner.mdp)
     AV = actiontype(P)
