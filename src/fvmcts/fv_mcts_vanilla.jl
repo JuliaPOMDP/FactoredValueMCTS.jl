@@ -1,6 +1,3 @@
-## We can use the following directly without modification
-## 1. domain_knowledge.jl for Rollout, init_Q and init_N functions
-## 2. FVMCTSSolver for representing the overall MCTS (underlying things will change)
 using StaticArrays
 using Parameters
 using Base.Threads: @spawn
@@ -18,6 +15,60 @@ end
     edge_exploration::Bool = true
 end
 
+"""
+Factored Value Monte Carlo Tree Search solver datastructure
+
+Fields:
+    n_iterations::Int64
+        Number of iterations during each action() call.
+        default: 100
+
+    max_time::Float64
+        Maximum CPU time to spend computing an action.
+        default::Inf
+    
+    depth::Int64
+        Number of iterations during each action() call.
+        default: 100
+    
+    exploration_constant::Float64:
+        Specifies how much the solver should explore. In the UCB equation, Q + c*sqrt(log(t/N)), c is the exploration constant.
+        The exploration terms for FV-MCTS-Var-El and FV-MCTS-Max-Plus are different but the role of c is the same.
+        default: 1.0
+    
+    rng::AbstractRNG:
+        Random number generator
+
+    estimate_value::Any (rollout policy)
+        Function, object, or number used to estimate the value at the leaf nodes.
+        If this is a function `f`, `f(mdp, s, depth)` will be called to estimate the value.
+        If this is an object `o`, `estimate_value(o, mdp, s, depth)` will be called.
+        If this is a number, the value will be set to that number
+        default: RolloutEstimator(RandomSolver(rng))
+
+    init_Q::Any
+        Function, object, or number used to set the initial Q(s,a) value at a new node.
+        If this is a function `f`, `f(mdp, s, a)` will be called to set the value.
+        If this is an object `o`, `init_Q(o, mdp, s, a)` will be called.
+        If this is a number, Q will be set to that number
+        default: 0.0
+    
+    init_N::Any
+        Function, object, or number used to set the initial N(s,a) value at a new node.
+        If this is a function `f`, `f(mdp, s, a)` will be called to set the value.
+        If this is an object `o`, `init_N(o, mdp, s, a)` will be called.
+        If this is a number, N will be set to that number
+        default: 0
+    
+    reuse_tree::Bool
+        If this is true, the tree information is re-used for calculating the next plan.
+        Of course, clear_tree! can always be called to override this.
+        default: false
+    
+    coordination_strategy::AbstractCoordinationStrategy
+        The specific strategy with which to compute the best joint action from the current MCTS statistics.
+        default: VarEl() 
+"""
 @with_kw mutable struct FVMCTSSolver <: AbstractMCTSSolver
     n_iterations::Int64 = 100
     max_time::Float64 = Inf
@@ -28,37 +79,31 @@ end
     init_Q::Any = 0.0
     init_N::Any = 0
     reuse_tree::Bool = false
-    coordination_strategy::Any = VarEl()
+    coordination_strategy::AbstractCoordinationStrategy = VarEl()
 end
 
 
-# FVMCTS tree has to be different, to efficiently encode Q-stats
 mutable struct FVMCTSTree{S,A,CS<:CoordinationStatistics}
 
-    # To track if state node in tree already
-    # NOTE: We don't strictly need this at all if no tree reuse...
+    # To map the multi-agent state vector to the ID of the node in the tree
     state_map::Dict{AbstractVector{S},Int64}
 
-    # these vectors have one entry for each state node
-    # Only doing factored satistics (for actions), not state components
-    # Looks like we don't need child_ids
-    total_n::Vector{Int}
-    s_labels::Vector{AbstractVector{S}}
+    # The next two vectors have one for each node ID in the tree
+    total_n::Vector{Int}                # The number of times the node has been tried
+    s_labels::Vector{AbstractVector{S}} # The state corresponding to the node ID
 
-    # Track stats for all action components over the n_iterations
+    # List of all individual actions of each agent for coordination purposes.
     all_agent_actions::Vector{AbstractVector{A}}
 
     coordination_stats::CS
     lock::ReentrantLock
-    # Don't need a_labels because need to do var-el for best action anyway
 end
 
-# Just a glorified wrapper now
 function FVMCTSTree(all_agent_actions::Vector{AbstractVector{A}},
-                       coordination_stats::CS,
-                       init_state::AbstractVector{S},
-                       lock::ReentrantLock,
-                       sz::Int64=10000) where {S, A, CS <: CoordinationStatistics}
+                    coordination_stats::CS,
+                    init_state::AbstractVector{S},
+                    lock::ReentrantLock,
+                    sz::Int64=10000) where {S, A, CS <: CoordinationStatistics}
 
     return FVMCTSTree{S,A,CS}(Dict{typeof(init_state),Int64}(),
                                  sizehint!(Int[], sz),
@@ -79,9 +124,8 @@ struct FVStateNode{S}
     id::Int64
 end
 
-#get_state_node(tree::FVMCTSTree, id) = FVStateNode(tree, id)
 
-# accessors for state nodes
+# Accessors for state nodes
 @inline state(n::FVStateNode) = n.tree.s_labels[n.id]
 @inline total_n(n::FVStateNode) = n.tree.total_n[n.id]
 
@@ -95,14 +139,18 @@ mutable struct FVMCTSPlanner{S, A, SE, CS <: CoordinationStatistics, RNG <: Abst
     rng::RNG
 end
 
+"""
+Called internally in solve() to create the FVMCTSPlanner where Var-El is the specific action coordination strategy.
+Creates VarElStatistics internally with the CG components and the minimum degree ordering heuristic.
+"""
 function varel_joint_mcts_planner(solver::FVMCTSSolver,
                                   mdp::JointMDP{S,A},
                                   init_state::AbstractVector{S},
                                   ) where {S,A}
 
-    # Get coord graph comps from maximal cliques of graph
+    # Get coordination graph components from maximal cliques
     adjmat = coord_graph_adj_mat(mdp)
-    @assert size(adjmat)[1] == n_agents(mdp) "Adjacency Mat does not match number of agents!"
+    @assert size(adjmat)[1] == n_agents(mdp) "Adjacency Matrix does not match number of agents!"
 
     adjmatgraph = SimpleGraph(adjmat)
     coord_graph_components = maximal_cliques(adjmatgraph)
@@ -120,15 +168,18 @@ function varel_joint_mcts_planner(solver::FVMCTSSolver,
                                                    Dict{typeof(init_state),Vector{Vector{Int64}}}(),
                                                    )
 
-    # Create tree FROM CURRENT STATE
+    # Create tree from the current state
     tree = FVMCTSTree(all_agent_actions, ve_stats,
                          init_state, ReentrantLock(), solver.n_iterations)
     se = convert_estimator(solver.estimate_value, solver, mdp)
 
     return FVMCTSPlanner(solver, mdp, tree, se, solver.rng)
-end # end FVMCTSPlanner
+end # end function
 
-
+"""
+Called internally in solve() to create the FVMCTSPlanner where Max-Plus is the specific action coordination strategy.
+Creates MaxPlusStatistics and assumes the various MP flags are sent down from the CoordinationStrategy object given to the solver.
+"""
 function maxplus_joint_mcts_planner(solver::FVMCTSSolver,
                                     mdp::JointMDP{S,A},
                                     init_state::AbstractVector{S},
@@ -145,6 +196,7 @@ function maxplus_joint_mcts_planner(solver::FVMCTSSolver,
     @assert size(adjmat)[1] == n_agents(mdp) "Adjacency Mat does not match number of agents!"
 
     adjmatgraph = SimpleGraph(adjmat)
+    
     # Initialize full agent actions
     # TODO(jkg): this is incorrect? Or we need to override actiontype to refer to agent actions?
     all_agent_actions = Vector{actiontype(mdp)}(undef, n_agents(mdp))
@@ -153,16 +205,16 @@ function maxplus_joint_mcts_planner(solver::FVMCTSSolver,
     end
 
     mp_stats = MaxPlusStatistics{eltype(init_state)}(adjmatgraph,
-                                                     message_iters,
-                                                     message_norm,
-                                                     use_agent_utils,
-                                                     node_exploration,
-                                                     edge_exploration,
-                                                     Dict{typeof(init_state),PerStateMPStats}())
+                                                    message_iters,
+                                                    message_norm,
+                                                    use_agent_utils,
+                                                    node_exploration,
+                                                    edge_exploration,
+                                                    Dict{typeof(init_state),PerStateMPStats}())
 
-    # Create tree FROM CURRENT STATE
+    # Create tree from the current state
     tree = FVMCTSTree(all_agent_actions, mp_stats,
-                         init_state, ReentrantLock(), solver.n_iterations)
+                      init_state, ReentrantLock(), solver.n_iterations)
     se = convert_estimator(solver.estimate_value, solver, mdp)
 
     return FVMCTSPlanner(solver, mdp, tree, se, solver.rng)
@@ -186,26 +238,22 @@ function clear_tree!(planner::FVMCTSPlanner)
     clear_statistics!(planner.tree.coordination_stats)
 end
 
-# function get_state_node(tree::FVMCTSTree, s, planner::FVMCTSPlanner)
-#     if haskey(tree.state_map, s)
-#         return FVStateNode(tree, tree.state_map[s]) # Is this correct? Not equiv to vanilla
-#     else
-#         return insert_node!(tree, planner, s)
-#     end
-# end
-
 MCTS.init_Q(n::Number, mdp::JointMDP, s, c, a) = convert(Float64, n)
 MCTS.init_N(n::Number, mdp::JointMDP, s, c, a) = convert(Int, n)
 
 
-# no computation is done in solve - the solver is just given the mdp model that it will work with
+# No computation is done in solve; the solver is just given the mdp model that it will work with
+# and in case of MaxPlus, the various flags for the MaxPlus behavior
 function POMDPs.solve(solver::FVMCTSSolver, mdp::JointMDP)
     if typeof(solver.coordination_strategy) == VarEl
         return varel_joint_mcts_planner(solver, mdp, initialstate(mdp, solver.rng))
     elseif typeof(solver.coordination_strategy) == MaxPlus
-        return maxplus_joint_mcts_planner(solver, mdp, initialstate(mdp, solver.rng), solver.coordination_strategy.message_iters,
-                                          solver.coordination_strategy.message_norm, solver.coordination_strategy.use_agent_utils,
-                                          solver.coordination_strategy.node_exploration, solver.coordination_strategy.edge_exploration)
+        return maxplus_joint_mcts_planner(solver, mdp, initialstate(mdp, solver.rng),
+                                          solver.coordination_strategy.message_iters,
+                                          solver.coordination_strategy.message_norm,
+                                          solver.coordination_strategy.use_agent_utils,
+                                          solver.coordination_strategy.node_exploration,
+                                          solver.coordination_strategy.edge_exploration)
     else
         throw(error("Not Implemented"))
     end
