@@ -1,4 +1,3 @@
-## Now do for message passing
 # NOTE: Matrix implicitly assumes all agents have same number of actions
 mutable struct PerStateMPStats
     agent_action_n::Matrix{Int64} # N X A
@@ -7,7 +6,32 @@ mutable struct PerStateMPStats
     edge_action_q::Matrix{Float64}
 end
 
-# NOTE: Putting params here is a little ugly but coordinate_action can't have them since VarEl doesn't use those args
+"""
+Tracks the specific informations and statistics we need to use Max-Plus to coordinate_action
+the joint action in Factored-Value MCTS. Putting parameters here is a little ugly but coordinate_action can't have them since VarEl doesn't use those args.
+
+Fields:
+    adjmatgraph::SimpleGraph
+        The coordination graph as a LightGraphs SimpleGraph.
+    
+    message_iters::Int64
+        Number of rounds of message passing.
+
+    message_norm::Bool
+        Whether to normalize the messages or not after message passing.
+
+    use_agent_utils::Bool
+        Whether to include the per-agent utilities while computing the best agent action (see our paper for details)
+
+    node_exploration::Bool
+        Whether to use the per-node UCB style bonus while computing the best agent action (see our paper for details)
+
+    edge_exploration::Bool
+        Whether to use the per-edge UCB style bonus after the message passing rounds (see our paper for details). One of this or node_exploration MUST be true for exploration.
+
+    all_states_stats::Dict{AbstractVector{S},PerStateMPStats}
+        Maps each joint state in the tree to the per-state statistics.
+"""
 mutable struct MaxPlusStatistics{S} <: CoordinationStatistics
     adjmatgraph::SimpleGraph
     message_iters::Int64
@@ -22,6 +46,9 @@ function clear_statistics!(mp_stats::MaxPlusStatistics)
     empty!(mp_stats.all_states_stats)
 end
 
+"""
+Take the q-value from the MCTS step and distribute the updates across the per-node and per-edge q-stats as per the formula in our paper.
+"""
 function update_statistics!(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusStatistics{S}},
                             s::AbstractVector{S}, ucb_action::AbstractVector{A}, q::AbstractVector{Float64}) where {S,A}
 
@@ -38,7 +65,7 @@ function update_statistics!(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusS
         end
     end
 
-    # Now update edge action stats
+    # Now update per-edge action stats
     for (idx, e) in enumerate(edges(tree.coordination_stats.adjmatgraph))
         # NOTE: Need to be careful about action ordering
         # Being more general to have unequal agent actions
@@ -106,7 +133,9 @@ function init_statistics!(tree::JointMCTSTree{S,A,MaxPlusStatistics{S}}, planner
     end
 end
 
-# NOTE: Following deepCG
+"""
+Runs Max-Plus at the current state using the per-state MaxPlusStatistics to compute the best joint action with either or both of node-wise and edge-wise exploration bonus. Rounds of message passing are followed by per-node maximization.
+"""
 function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusStatistics{S}}, s::AbstractVector{S},
                            exploration_constant::Float64=0.0, node_id::Int64=0) where {S,A}
 

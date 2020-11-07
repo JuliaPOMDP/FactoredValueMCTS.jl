@@ -1,3 +1,20 @@
+"""
+Tracks the specific informations and statistics we need to use Var-El to coordinate_action
+the joint action in Factored-Value MCTS.
+
+Fields:
+    coord_graph_components::Vector{Vector{Int64}}
+        The list of coordination graph components, i.e., cliques, where each element is a list of agent IDs that are in a mutual clique.
+    
+    min_degree_ordering::Vector{Int64}
+        Ordering of agent IDs in increasing CG degree. This ordering is the heuristic most typically used for the elimination order in Var-El.
+
+    n_component_stats::Dict{AbstractVector{S},Vector{Vector{Int64}}}
+        Maps each joint state in the tree (for which we need to compute the UCB action) to the frequency of each component's various local actions.
+
+    q_component_stats::Dict{AbstractVector{S},Vector{Vector{Float64}}}
+        Maps each joint state in the tree to the accumulated q-value of each component's various local actions.
+"""
 mutable struct VarElStatistics{S} <: CoordinationStatistics
     coord_graph_components::Vector{Vector{Int64}}
     min_degree_ordering::Vector{Int64}
@@ -11,15 +28,17 @@ function clear_statistics!(ve_stats::VarElStatistics)
 end
 
 
+"""
+Runs variable elimination at the current state using the VarEl Statistics to compute the best joint action with the component-wise exploration bonus.
+FYI: Rather complicated.
+"""
 function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElStatistics{S}}, s::AbstractVector{S},
                            exploration_constant::Float64=0.0, node_id::Int64=0) where {S,A}
 
     n_agents = length(s)
     best_action_idxs = MVector{n_agents}([-1 for i in 1:n_agents])
 
-    #
     # !Note: Acquire lock so as to avoid race
-    #
     state_q_stats = lock(tree.lock) do
         tree.coordination_stats.q_component_stats[s]
     end
@@ -58,8 +77,7 @@ function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElStat
                 # Agent to-be-eliminated is in factor
                 push!(agent_factors, k)
 
-                # Construct key for new potential as union of all others
-                # except ag_idx
+                # Construct key for new potential as union of all others except ag_idx
                 for ag in k
                     if ag != ag_idx && ~(ag in new_potential_members)
                         push!(new_potential_members, ag)
@@ -78,8 +96,7 @@ function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElStat
 
         else
 
-            # Generate new potential function
-            # AND the best response vector for eliminated agent
+            # Generate new potential function and the best response vector for eliminated agent
             n_comp_actions = prod([length(tree.all_agent_actions[c]) for c in new_potential_members])
 
             # NOTE: Tuples should ALWAYS use tree.all_agent_actions for indexing
@@ -193,6 +210,9 @@ function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElStat
 end
 
 
+"""
+Take the q-value from the MCTS step and distribute the updates across the component q-stats as per the formula in the Amato-Oliehoek paper.
+"""
 function update_statistics!(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElStatistics{S}},
                             s::AbstractVector{S}, ucb_action::AbstractVector{A}, q::AbstractVector{Float64}) where {S,A}
 

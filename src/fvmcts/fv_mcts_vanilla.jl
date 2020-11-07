@@ -224,7 +224,7 @@ end
 # Reset tree.
 function clear_tree!(planner::FVMCTSPlanner)
 
-    # Clear out state hash dict entirely
+    # Clear out state map dict entirely
     empty!(planner.tree.state_map)
 
     # Empty state vectors with state hints
@@ -276,23 +276,20 @@ function POMDPModelTools.action_info(planner::FVMCTSPlanner, s)
     return action, nothing
 end
 
-## Not implementing value functions right now....
-## ..Is it just the MAX of the best action, rather than argmax???
 
-# Could reuse plan! from vanilla.jl. But I don't like
-# calling an element of an abstract type like AbstractMCTSPlanner
 function plan!(planner::FVMCTSPlanner, s)
     planner.tree = build_tree(planner, s)
 end
 
-# Build_Tree can be called on the assumption that no reuse AND tree is reinitialized
+# build_tree can be called on the assumption that no reuse AND tree is reinitialized
 function build_tree(planner::FVMCTSPlanner, s::AbstractVector{S}) where S
 
     n_iterations = planner.solver.n_iterations
     depth = planner.solver.depth
 
     root = insert_node!(planner.tree, planner, s)
-    # build the tree
+    
+    # Simulate can be multi-threaded
     @sync for n = 1:n_iterations
         @spawn simulate(planner, root, depth)
     end
@@ -314,11 +311,10 @@ function simulate(planner::FVMCTSPlanner, node::FVStateNode, depth::Int64)
         return estimate_value(planner.solved_estimate, planner.mdp, s, depth)
     end
 
-    # Choose best UCB action (NOT an action node)
+    # Choose best UCB action (NOT an action node as in vanilla MCTS)
     ucb_action = coordinate_action(mdp, planner.tree, s, planner.solver.exploration_constant, node.id)
 
-    # @show ucb_action
-    # MC Transition
+    # Monte Carlo Transition
     sp, r = gen(DDNOut(:sp, :r), mdp, s, ucb_action, rng)
 
     spid = lock(tree.lock) do
@@ -327,13 +323,13 @@ function simulate(planner::FVMCTSPlanner, node::FVStateNode, depth::Int64)
     if spid == 0
         spn = insert_node!(tree, planner, sp)
         spid = spn.id
-        # TODO define estimate_value
+
         q = r .+ discount(mdp) * estimate_value(planner.solved_estimate, planner.mdp, sp, depth - 1)
     else
         q = r .+ discount(mdp) * simulate(planner, FVStateNode(tree, spid) , depth - 1)
     end
 
-    ## Not bothering with tree vis right now
+    # NOTE: Not bothering with tree visualization right now
     # Augment N(s)
     lock(tree.lock) do
         tree.total_n[node.id] += 1
@@ -349,9 +345,9 @@ end
 POMDPLinter.@POMDP_require simulate(planner::FVMCTSPlanner, s, depth::Int64) begin
     mdp = planner.mdp
     P = typeof(mdp)
-    @assert P <: JointMDP       # req does different thing?
+    @assert P <: JointMDP
     SV = statetype(P)
-    @assert typeof(SV) <: AbstractVector # TODO: Is this correct?
+    @assert typeof(SV) <: AbstractVector
     AV = actiontype(P)
     @assert typeof(A) <: AbstractVector
     @req discount(::P)
@@ -360,7 +356,7 @@ POMDPLinter.@POMDP_require simulate(planner::FVMCTSPlanner, s, depth::Int64) beg
     @subreq estimate_value(planner.solved_estimate, mdp, s, depth)
     @req gen(::DDNOut{(:sp, :r)}, ::P, ::SV, ::A, ::typeof(planner.rng))
 
-    # MMDP reqs
+    ## Requirements from MMDP Model
     @req get_agent_actions(::P, ::Int64)
     @req get_agent_actions(::P, ::Int64, ::eltype(SV))
     @req n_agents(::P)
@@ -381,9 +377,10 @@ function insert_node!(tree::FVMCTSTree{S,A,CS}, planner::FVMCTSPlanner,
         tree.state_map[s] = length(tree.s_labels)
         push!(tree.total_n, 1)
 
-        # TODO: Could actually make actions state-dependent if need be
+        # NOTE: Could actually make actions state-dependent if need be
         init_statistics!(tree, planner, s)
     end
+    
     # length(tree.s_labels) is just an alias for the number of state nodes
     ls = lock(tree.lock) do
         length(tree.s_labels)
