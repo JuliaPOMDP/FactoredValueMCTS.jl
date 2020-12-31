@@ -39,7 +39,7 @@ mutable struct MaxPlusStatistics{S} <: CoordinationStatistics
     use_agent_utils::Bool
     node_exploration::Bool
     edge_exploration::Bool # NOTE: One of this or node exploration must be true
-    all_states_stats::Dict{AbstractVector{S},PerStateMPStats}
+    all_states_stats::Dict{S,PerStateMPStats}
 end
 
 function clear_statistics!(mp_stats::MaxPlusStatistics)
@@ -49,15 +49,15 @@ end
 """
 Take the q-value from the MCTS step and distribute the updates across the per-node and per-edge q-stats as per the formula in our paper.
 """
-function update_statistics!(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusStatistics{S}},
-                            s::AbstractVector{S}, ucb_action::AbstractVector{A}, q::AbstractVector{Float64}) where {S,A}
+function update_statistics!(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,MaxPlusStatistics{S}},
+                            s::S, ucb_action::A, q::AbstractVector{Float64}) where {S,A}
 
     state_stats = tree.coordination_stats.all_states_stats[s]
     n_agents = length(s)
 
     # Update per agent action stats
     for i = 1:n_agents
-        ac_idx = get_agent_actionindex(mdp, i, ucb_action[i])
+        ac_idx = agent_actionindex(mdp, i, ucb_action[i])
         lock(tree.lock) do
             state_stats.agent_action_n[i, ac_idx] += 1
             state_stats.agent_action_q[i, ac_idx] +=
@@ -71,8 +71,8 @@ function update_statistics!(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusS
         # Being more general to have unequal agent actions
         edge_comp = (e.src,e.dst)
         edge_tup = Tuple(1:length(tree.all_agent_actions[c]) for c in edge_comp)
-        edge_ac_idx = LinearIndices(edge_tup)[get_agent_actionindex(mdp, e.src, ucb_action[e.src]),
-                                              get_agent_actionindex(mdp, e.dst, ucb_action[e.dst])]
+        edge_ac_idx = LinearIndices(edge_tup)[agent_actionindex(mdp, e.src, ucb_action[e.src]),
+                                              agent_actionindex(mdp, e.dst, ucb_action[e.dst])]
         q_edge_value = q[e.src] + q[e.dst]
 
         lock(tree.lock) do
@@ -88,8 +88,8 @@ function update_statistics!(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusS
 
 end
 
-function init_statistics!(tree::JointMCTSTree{S,A,MaxPlusStatistics{S}}, planner::JointMCTSPlanner,
-                          s::AbstractVector{S}) where {S,A}
+function init_statistics!(tree::FVMCTSTree{S,A,MaxPlusStatistics{S}}, planner::FVMCTSPlanner,
+                          s::S) where {S,A}
 
     n_agents = length(s)
 
@@ -136,7 +136,7 @@ end
 """
 Runs Max-Plus at the current state using the per-state MaxPlusStatistics to compute the best joint action with either or both of node-wise and edge-wise exploration bonus. Rounds of message passing are followed by per-node maximization.
 """
-function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusStatistics{S}}, s::AbstractVector{S},
+function coordinate_action(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,MaxPlusStatistics{S}}, s::S,
                            exploration_constant::Float64=0.0, node_id::Int64=0) where {S,A}
 
     state_stats = lock(tree.lock) do
@@ -149,7 +149,7 @@ function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusSt
     message_norm = tree.coordination_stats.message_norm
 
     n_agents = length(s)
-    state_agent_actions = [get_agent_actions(mdp, i, si) for (i, si) in enumerate(s)]
+    state_agent_actions = [agent_actions(mdp, i, si) for (i, si) in enumerate(s)]
     n_all_actions = length(tree.all_agent_actions[1])
     n_edges = ne(tree.coordination_stats.adjmatgraph)
 
@@ -223,12 +223,12 @@ function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,MaxPlusSt
         exp_q_values = zeros(length(state_agent_actions[i]))
         if tree.coordination_stats.node_exploration
             for (idx, ai) in enumerate(state_agent_actions[i])
-                ai_idx = get_agent_actionindex(mdp, i, ai)
+                ai_idx = agent_actionindex(mdp, i, ai)
                 exp_q_values[idx] = q_values[i, ai_idx] + exploration_constant*sqrt((log(state_total_n + 1.0))/(state_stats.agent_action_n[i, ai_idx] + 1.0))
             end
         else
             for (idx, ai) in enumerate(state_agent_actions[i])
-                ai_idx = get_agent_actionindex(mdp, i, ai)
+                ai_idx = agent_actionindex(mdp, i, ai)
                 exp_q_values[idx] = q_values[i, ai_idx]
             end
         end
@@ -259,21 +259,21 @@ function perform_message_passing!(fwd_messages::AbstractArray{F,2}, bwd_messages
         # Need to look up global index of agent action and use that
         # Need to break up vectorized loop
         @inbounds for aj in state_agent_actions[j]
-            aj_idx = get_agent_actionindex(mdp, j, aj)
+            aj_idx = agent_actionindex(mdp, j, aj)
             fwd_message_vals = zeros(length(state_agent_actions[i]))
             # TODO: Should we use inbounds here again?
             @inbounds for (idx, ai) in enumerate(state_agent_actions[i])
-                ai_idx = get_agent_actionindex(mdp, i, ai)
+                ai_idx = agent_actionindex(mdp, i, ai)
                 fwd_message_vals[idx] = q_values[i, ai_idx] - bwd_messages_old[e_idx, ai_idx] + state_stats.edge_action_q[e_idx, edge_tup_indices[ai_idx, aj_idx]]/n_edges + exploration_constant * sqrt( (log(state_total_n + 1.0)) / (state_stats.edge_action_n[e_idx, edge_tup_indices[ai_idx, aj_idx]] + 1) )
             end
             fwd_messages[e_idx, aj_idx] = maximum(fwd_message_vals)
         end
 
         @inbounds for ai in state_agent_actions[i]
-            ai_idx = get_agent_actionindex(mdp, i, ai)
+            ai_idx = agent_actionindex(mdp, i, ai)
             bwd_message_vals = zeros(length(state_agent_actions[j]))
             @inbounds for (idx, aj) in enumerate(state_agent_actions[j])
-                aj_idx = get_agent_actionindex(mdp, j, aj)
+                aj_idx = agent_actionindex(mdp, j, aj)
                 bwd_message_vals[idx] = q_values[j, aj_idx] - fwd_messages_old[e_idx, aj_idx] + state_stats.edge_action_q[e_idx, edge_tup_indices[ai_idx, aj_idx]]/n_edges + exploration_constant * sqrt( (log(state_total_n + 1.0))/ (state_stats.edge_action_n[e_idx, edge_tup_indices[ai_idx, aj_idx]] + 1) )
             end
             bwd_messages[e_idx, ai_idx] = maximum(bwd_message_vals)

@@ -1,6 +1,6 @@
 
 
-@with_kw mutable struct FCMCTSSolver <: AbstractMCTSSolver
+Base.@kwdef mutable struct FCMCTSSolver <: AbstractMCTSSolver
     n_iterations::Int64 = 100
     max_time::Float64 = Inf
     depth::Int64 = 10
@@ -15,26 +15,26 @@ end
 mutable struct FCMCTSTree{S,A}
     # To track if state node in tree already
     # NOTE: We don't strictly need this at all if no tree reuse...
-    state_map::Dict{AbstractVector{S},Int64}
+    state_map::Dict{S,Int64}
 
     # these vectors have one entry for each state node
     # Only doing factored satistics (for actions), not state components
     child_ids::Vector{Vector{Int}}
     total_n::Vector{Int}
-    s_labels::Vector{AbstractVector{S}}
+    s_labels::Vector{S}
 
     # TODO(jkg): is this the best way to track stats?
     # these vectors have one entry for each action node
     n::Vector{Int64}
     q::Vector{Float64}
-    a_labels::Vector{AbstractVector{A}}
+    a_labels::Vector{A}
 
     lock::ReentrantLock
 end
 
-function FCMCTSTree{S,A}(init_state::AbstractVector{S}, lock::ReentrantLock, sz::Int=1000) where {S,A}
+function FCMCTSTree{S,A}(init_state::S, lock::ReentrantLock, sz::Int=1000) where {S,A}
     sz = min(sz, 100_000)
-    return FCMCTSTree{S,A}(Dict{typeof(init_state),Int64}(),
+    return FCMCTSTree{S,A}(Dict{S,Int64}(),
                            sizehint!(Vector{Int}[], sz),
                            sizehint!(Int[], sz),
                            sizehint!(typeof(init_state)[], sz),
@@ -172,7 +172,7 @@ function simulate(planner::FCMCTSPlanner, node::FCStateNode, depth::Int64)
 
     # @show ucb_action
     # MC Transition
-    sp, r = gen(DDNOut(:sp, :r), mdp, s, ucb_action, rng)
+    sp, r = @gen(:sp, :r)(mdp, s, ucb_action, rng)
 
     # NOTE(jkg): just summing up the rewards to get a single value
     # TODO: should we divide by n_agents?
@@ -212,7 +212,7 @@ function insert_node!(tree::FCMCTSTree, planner::FCMCTSPlanner, s)
     end
 
     # NOTE: Doing state-dep actions here the JointMDP way
-    state_dep_jtactions = vec(map(collect, Iterators.product((get_agent_actions(planner.mdp, i, si) for (i, si) in enumerate(s))...)))
+    state_dep_jtactions = vec(map(collect, Iterators.product((agent_actions(planner.mdp, i, si) for (i, si) in enumerate(s))...)))
     total_n = 0
 
     for a in state_dep_jtactions
@@ -259,23 +259,23 @@ function compute_best_action_node(mdp::JointMDP, tree::FCMCTSTree, node::FCState
     return best
 end
 
-POMDPLinter.@POMDP_require simulate(planner::FCMCTSPlanner, s, depth::Int64) begin
+@POMDP_require simulate(planner::FCMCTSPlanner, s, depth::Int64) begin
     mdp = planner.mdp
     P = typeof(mdp)
     @assert P <: JointMDP       # req does different thing?
-    SV = statetype(P)
-    @assert typeof(SV) <: AbstractVector # TODO: Is this correct?
+    #SV = statetype(P)
+    #@assert typeof(SV) <: AbstractVector # TODO: Is this correct?
     AV = actiontype(P)
-    @assert typeof(A) <: AbstractVector
+    @assert typeof(AV) <: AbstractVector
     @req discount(::P)
     @req isterminal(::P, ::SV)
     @subreq insert_node!(planner.tree, planner, s)
     @subreq estimate_value(planner.solved_estimate, mdp, s, depth)
-    @req gen(::DDNOut{(:sp, :r)}, ::P, ::SV, ::A, ::typeof(planner.rng))
+    @req gen(::DDNOut{(:sp, :r)}, ::P, ::SV, ::AV, ::typeof(planner.rng))
 
     # MMDP reqs
-    @req get_agent_actions(::P, ::Int64)
-    @req get_agent_actions(::P, ::Int64, ::eltype(SV))
+    @req agent_actions(::P, ::Int64)
+    @req agent_actions(::P, ::Int64, ::eltype(SV)) # TODO should this be eltype?
     @req n_agents(::P)
 
     # TODO: Should we also have this requirement for SV?
@@ -283,7 +283,7 @@ POMDPLinter.@POMDP_require simulate(planner::FCMCTSPlanner, s, depth::Int64) beg
     @req hash(::S)
 end
 
-POMDPLinter.@POMDP_require insert_node!(tree::FCMCTSTree, planner::FCMCTSPlanner, s) begin
+@POMDP_require insert_node!(tree::FCMCTSTree, planner::FCMCTSPlanner, s) begin
 
     P = typeof(planner.mdp)
     AV = actiontype(P)
@@ -292,6 +292,7 @@ POMDPLinter.@POMDP_require insert_node!(tree::FCMCTSTree, planner::FCMCTSPlanner
     S = eltype(SV)
 
     # TODO: Review IQ and IN
+    # Should this be ::S or ::SV? We can have global state that's not a vector.
     IQ = typeof(planner.solver.init_Q)
     if !(IQ <: Number) && !(IQ <: Function)
         @req init_Q(::IQ, ::P, ::S, ::Vector{Int64}, ::AbstractVector{A})

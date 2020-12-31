@@ -3,11 +3,10 @@ module MAMCTS
 using Random
 using LinearAlgebra
 
-using Parameters
 using POMDPs
-using MAPOMDPs
+using MultiAgentPOMDPs
 using POMDPPolicies
-using POMDPLinter
+using POMDPLinter: @req, @subreq, @POMDP_require
 using MCTS
 using LightGraphs
 using BeliefUpdaters

@@ -7,7 +7,7 @@ abstract type AbstractCoordinationStrategy end
 struct VarEl <: AbstractCoordinationStrategy
 end
 
-@with_kw struct MaxPlus <:AbstractCoordinationStrategy
+Base.@kwdef struct MaxPlus <:AbstractCoordinationStrategy
     message_iters::Int64 = 10
     message_norm::Bool = true
     use_agent_utils::Bool = false
@@ -69,7 +69,7 @@ Fields:
         The specific strategy with which to compute the best joint action from the current MCTS statistics.
         default: VarEl() 
 """
-@with_kw mutable struct FVMCTSSolver <: AbstractMCTSSolver
+Base.@kwdef mutable struct FVMCTSSolver <: AbstractMCTSSolver
     n_iterations::Int64 = 100
     max_time::Float64 = Inf
     depth::Int64 = 10
@@ -86,28 +86,28 @@ end
 mutable struct FVMCTSTree{S,A,CS<:CoordinationStatistics}
 
     # To map the multi-agent state vector to the ID of the node in the tree
-    state_map::Dict{AbstractVector{S},Int64}
+    state_map::Dict{S,Int64}
 
     # The next two vectors have one for each node ID in the tree
     total_n::Vector{Int}                # The number of times the node has been tried
-    s_labels::Vector{AbstractVector{S}} # The state corresponding to the node ID
+    s_labels::Vector{S} # The state corresponding to the node ID
 
     # List of all individual actions of each agent for coordination purposes.
-    all_agent_actions::Vector{AbstractVector{A}}
+    all_agent_actions::Vector{A}
 
     coordination_stats::CS
     lock::ReentrantLock
 end
 
-function FVMCTSTree(all_agent_actions::Vector{AbstractVector{A}},
+function FVMCTSTree(all_agent_actions::Vector{A},
                     coordination_stats::CS,
-                    init_state::AbstractVector{S},
+                    init_state::S,
                     lock::ReentrantLock,
                     sz::Int64=10000) where {S, A, CS <: CoordinationStatistics}
 
-    return FVMCTSTree{S,A,CS}(Dict{typeof(init_state),Int64}(),
+    return FVMCTSTree{S,A,CS}(Dict{S,Int64}(),
                                  sizehint!(Int[], sz),
-                                 sizehint!(typeof(init_state)[], sz),
+                                 sizehint!(S[], sz),
                                  all_agent_actions,
                                  coordination_stats,
                                  lock
@@ -145,25 +145,26 @@ Creates VarElStatistics internally with the CG components and the minimum degree
 """
 function varel_joint_mcts_planner(solver::FVMCTSSolver,
                                   mdp::JointMDP{S,A},
-                                  init_state::AbstractVector{S},
+                                  init_state::S,
                                   ) where {S,A}
 
     # Get coordination graph components from maximal cliques
-    adjmat = coord_graph_adj_mat(mdp)
-    @assert size(adjmat)[1] == n_agents(mdp) "Adjacency Matrix does not match number of agents!"
+    #adjmat = coord_graph_adj_mat(mdp)
+    #@assert size(adjmat)[1] == n_agents(mdp) "Adjacency Matrix does not match number of agents!"
 
-    adjmatgraph = SimpleGraph(adjmat)
+    #adjmatgraph = SimpleGraph(adjmat)
+    adjmatgraph = coordination_graph(mdp)
+    
     coord_graph_components = maximal_cliques(adjmatgraph)
     min_degree_ordering = sortperm(degree(adjmatgraph))
 
     # Initialize full agent actions
-    # TODO(jkg): this is incorrect? Or we need to override actiontype to refer to agent actions?
-    all_agent_actions = Vector{actiontype(mdp)}(undef, n_agents(mdp))
+    all_agent_actions = Vector{(actiontype(mdp))}(undef, n_agents(mdp))
     for i = 1:n_agents(mdp)
-        all_agent_actions[i] = get_agent_actions(mdp, i)
+        all_agent_actions[i] = agent_actions(mdp, i)
     end
 
-    ve_stats = VarElStatistics{eltype(init_state)}(coord_graph_components, min_degree_ordering,
+    ve_stats = VarElStatistics{S}(coord_graph_components, min_degree_ordering,
                                                    Dict{typeof(init_state),Vector{Vector{Int64}}}(),
                                                    Dict{typeof(init_state),Vector{Vector{Int64}}}(),
                                                    )
@@ -182,7 +183,7 @@ Creates MaxPlusStatistics and assumes the various MP flags are sent down from th
 """
 function maxplus_joint_mcts_planner(solver::FVMCTSSolver,
                                     mdp::JointMDP{S,A},
-                                    init_state::AbstractVector{S},
+                                    init_state::S,
                                     message_iters::Int64,
                                     message_norm::Bool,
                                     use_agent_utils::Bool,
@@ -192,25 +193,27 @@ function maxplus_joint_mcts_planner(solver::FVMCTSSolver,
 
     @assert (node_exploration || edge_exploration) "At least one of nodes or edges should explore!"
 
-    adjmat = coord_graph_adj_mat(mdp)
-    @assert size(adjmat)[1] == n_agents(mdp) "Adjacency Mat does not match number of agents!"
+#=     adjmat = coord_graph_adj_mat(mdp)
+    @assert size(adjmat)[1] == n_agents(mdp) "Adjacency Mat does not match number of agents!" =#
 
-    adjmatgraph = SimpleGraph(adjmat)
+    #adjmatgraph = SimpleGraph(adjmat)
+    adjmatgraph = coordination_graph(mdp)
+    @assert size(adjacency_matrix(adjmatgraph))[1] == n_agents(mdp)
     
     # Initialize full agent actions
     # TODO(jkg): this is incorrect? Or we need to override actiontype to refer to agent actions?
-    all_agent_actions = Vector{actiontype(mdp)}(undef, n_agents(mdp))
+    all_agent_actions = Vector{(actiontype(mdp))}(undef, n_agents(mdp))
     for i = 1:n_agents(mdp)
-        all_agent_actions[i] = get_agent_actions(mdp, i)
+        all_agent_actions[i] = agent_actions(mdp, i)
     end
 
-    mp_stats = MaxPlusStatistics{eltype(init_state)}(adjmatgraph,
+    mp_stats = MaxPlusStatistics{S}(adjmatgraph,
                                                     message_iters,
                                                     message_norm,
                                                     use_agent_utils,
                                                     node_exploration,
                                                     edge_exploration,
-                                                    Dict{typeof(init_state),PerStateMPStats}())
+                                                    Dict{S,PerStateMPStats}())
 
     # Create tree from the current state
     tree = FVMCTSTree(all_agent_actions, mp_stats,
@@ -282,7 +285,7 @@ function plan!(planner::FVMCTSPlanner, s)
 end
 
 # build_tree can be called on the assumption that no reuse AND tree is reinitialized
-function build_tree(planner::FVMCTSPlanner, s::AbstractVector{S}) where S
+function build_tree(planner::FVMCTSPlanner, s::S) where S
 
     n_iterations = planner.solver.n_iterations
     depth = planner.solver.depth
@@ -315,7 +318,7 @@ function simulate(planner::FVMCTSPlanner, node::FVStateNode, depth::Int64)
     ucb_action = coordinate_action(mdp, planner.tree, s, planner.solver.exploration_constant, node.id)
 
     # Monte Carlo Transition
-    sp, r = gen(DDNOut(:sp, :r), mdp, s, ucb_action, rng)
+    sp, r = @gen(:sp, :r)(mdp, s, ucb_action, rng)
 
     spid = lock(tree.lock) do
         get(tree.state_map, sp, 0) # may be non-zero even with no tree reuse
@@ -342,12 +345,12 @@ function simulate(planner::FVMCTSPlanner, node::FVStateNode, depth::Int64)
     return q
 end
 
-POMDPLinter.@POMDP_require simulate(planner::FVMCTSPlanner, s, depth::Int64) begin
+@POMDP_require simulate(planner::FVMCTSPlanner, s, depth::Int64) begin
     mdp = planner.mdp
     P = typeof(mdp)
     @assert P <: JointMDP
-    SV = statetype(P)
-    @assert typeof(SV) <: AbstractVector
+    #SV = statetype(P)
+    #@assert typeof(SV) <: AbstractVector
     AV = actiontype(P)
     @assert typeof(A) <: AbstractVector
     @req discount(::P)
@@ -357,10 +360,10 @@ POMDPLinter.@POMDP_require simulate(planner::FVMCTSPlanner, s, depth::Int64) beg
     @req gen(::DDNOut{(:sp, :r)}, ::P, ::SV, ::A, ::typeof(planner.rng))
 
     ## Requirements from MMDP Model
-    @req get_agent_actions(::P, ::Int64)
-    @req get_agent_actions(::P, ::Int64, ::eltype(SV))
+    @req agent_actions(::P, ::Int64)
+    @req agent_actions(::P, ::Int64, ::eltype(SV))
     @req n_agents(::P)
-    @req coord_graph_adj_mat(::P)
+    @req coordination_graph(::P)
 
     # TODO: Should we also have this requirement for SV?
     @req isequal(::S, ::S)
@@ -370,7 +373,7 @@ end
 
 
 function insert_node!(tree::FVMCTSTree{S,A,CS}, planner::FVMCTSPlanner,
-                      s::AbstractVector{S}) where {S,A,CS <: CoordinationStatistics}
+                      s::S) where {S,A,CS <: CoordinationStatistics}
 
     lock(tree.lock) do
         push!(tree.s_labels, s)
@@ -388,23 +391,23 @@ function insert_node!(tree::FVMCTSTree{S,A,CS}, planner::FVMCTSPlanner,
     return FVStateNode(tree, ls)
 end
 
-POMDPLinter.@POMDP_require insert_node!(tree::FVMCTSTree, planner::FVMCTSPlanner, s) begin
+@POMDP_require insert_node!(tree::FVMCTSTree, planner::FVMCTSPlanner, s) begin
 
     P = typeof(planner.mdp)
     AV = actiontype(P)
     A = eltype(AV)
     SV = typeof(s)
-    S = eltype(SV)
+    #S = eltype(SV)
 
     # TODO: Review IQ and IN
     IQ = typeof(planner.solver.init_Q)
     if !(IQ <: Number) && !(IQ <: Function)
-        @req init_Q(::IQ, ::P, ::S, ::Vector{Int64}, ::AbstractVector{A})
+        @req init_Q(::IQ, ::P, ::SV, ::Vector{Int64}, ::AbstractVector{A})
     end
 
     IN = typeof(planner.solver.init_N)
     if !(IN <: Number) && !(IN <: Function)
-        @req init_N(::IQ, ::P, ::S, ::Vector{Int64}, ::AbstractVector{A})
+        @req init_N(::IQ, ::P, ::SV, ::Vector{Int64}, ::AbstractVector{A})
     end
 
     @req isequal(::S, ::S)

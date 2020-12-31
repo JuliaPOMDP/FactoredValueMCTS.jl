@@ -11,7 +11,7 @@ end
 FactoredRandomPolicy(problem::JointMDP; rng=Random.GLOBAL_RNG, updater=NothingUpdater()) = FactoredRandomPolicy(rng, problem, updater)
 
 function POMDPs.action(policy::FactoredRandomPolicy, s)
-    return [rand(policy.rng, get_agent_actions(policy.problem, i, si)) for (i, si) in enumerate(s)]
+    return [rand(policy.rng, agent_actions(policy.problem, i, si)) for (i, si) in enumerate(s)]
 end
 
 POMDPs.solve(solver::RandomSolver, problem::JointMDP) = FactoredRandomPolicy(solver.rng, problem, NothingUpdater())

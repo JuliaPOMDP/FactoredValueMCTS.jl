@@ -18,8 +18,8 @@ Fields:
 mutable struct VarElStatistics{S} <: CoordinationStatistics
     coord_graph_components::Vector{Vector{Int64}}
     min_degree_ordering::Vector{Int64}
-    n_component_stats::Dict{AbstractVector{S},Vector{Vector{Int64}}}
-    q_component_stats::Dict{AbstractVector{S},Vector{Vector{Float64}}}
+    n_component_stats::Dict{S,Vector{Vector{Int64}}}
+    q_component_stats::Dict{S,Vector{Vector{Float64}}}
 end
 
 function clear_statistics!(ve_stats::VarElStatistics)
@@ -32,7 +32,7 @@ end
 Runs variable elimination at the current state using the VarEl Statistics to compute the best joint action with the component-wise exploration bonus.
 FYI: Rather complicated.
 """
-function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElStatistics{S}}, s::AbstractVector{S},
+function coordinate_action(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,VarElStatistics{S}}, s::S,
                            exploration_constant::Float64=0.0, node_id::Int64=0) where {S,A}
 
     n_agents = length(s)
@@ -61,7 +61,7 @@ function coordinate_action(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElStat
     # E.g. Agent 2 -> (3,4) in its best response and corresponding vector of agent 2 best actions
     best_response_fns = Dict{Int64,Tuple{Vector{Int64},Vector{Int64}}}()
 
-    state_dep_actions = [get_agent_actions(mdp, i, si) for (i, si) in enumerate(s)]
+    state_dep_actions = [agent_actions(mdp, i, si) for (i, si) in enumerate(s)]
 
     # Iterate over variable ordering
     # Need to maintain intermediate tables
@@ -213,8 +213,8 @@ end
 """
 Take the q-value from the MCTS step and distribute the updates across the component q-stats as per the formula in the Amato-Oliehoek paper.
 """
-function update_statistics!(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElStatistics{S}},
-                            s::AbstractVector{S}, ucb_action::AbstractVector{A}, q::AbstractVector{Float64}) where {S,A}
+function update_statistics!(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,VarElStatistics{S}},
+                            s::S, ucb_action::A, q::AbstractVector{Float64}) where {S,A}
 
     n_agents = length(s)
 
@@ -226,23 +226,51 @@ function update_statistics!(mdp::JointMDP{S,A}, tree::JointMCTSTree{S,A,VarElSta
         # RECOVER local action corresp. to ucb action
         # TODO: Review this carefully. Need @req for action index for agent.
         local_action = [ucb_action[c] for c in comp]
-        local_action_idxs = [get_agent_actionindex(mdp, c, a) for (a, c) in zip(local_action, comp)]
+        local_action_idxs = [agent_actionindex(mdp, c, a) for (a, c) in zip(local_action, comp)]
 
         comp_ac_idx = LinearIndices(comp_tup)[local_action_idxs...]
 
         # NOTE: NOW we can update stats. Could generalize incremental update more here
         lock(tree.lock) do
             tree.coordination_stats.n_component_stats[s][idx][comp_ac_idx] += 1
-            q_comp_value = sum(q[c] for c in comp)
+            q_comp_value = sum(q[c] for c in comp) # TODO!!!
             tree.coordination_stats.q_component_stats[s][idx][comp_ac_idx] +=
                 (q_comp_value - tree.coordination_stats.q_component_stats[s][idx][comp_ac_idx]) / tree.coordination_stats.n_component_stats[s][idx][comp_ac_idx]
         end
     end
 end
 
+# TODO: is this the correct thing to do? 
+# My guess is no, but not sure.
+function update_statistics!(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,VarElStatistics{S}},
+    s::S, ucb_action::A, q::Float64) where {S, A}
+    n_agents = length(s)
 
-function init_statistics!(tree::JointMCTSTree{S,A,VarElStatistics{S}}, planner::JointMCTSPlanner,
-                          s::AbstractVector{S}) where {S,A}
+    for (idx, comp) in enumerate(tree.coordination_stats.coord_graph_components)
+
+        # Create cartesian index tuple
+        comp_tup = Tuple(1:length(tree.all_agent_actions[c]) for c in comp)
+
+        # RECOVER local action corresp. to ucb action
+        # TODO: Review this carefully. Need @req for action index for agent.
+        local_action = [ucb_action[c] for c in comp]
+        local_action_idxs = [agent_actionindex(mdp, c, a) for (a, c) in zip(local_action, comp)]
+
+        comp_ac_idx = LinearIndices(comp_tup)[local_action_idxs...]
+
+        # NOTE: NOW we can update stats. Could generalize incremental update more here
+        lock(tree.lock) do
+            tree.coordination_stats.n_component_stats[s][idx][comp_ac_idx] += 1
+            q_comp_value = q # TODO!!!
+            tree.coordination_stats.q_component_stats[s][idx][comp_ac_idx] +=
+                (q_comp_value - tree.coordination_stats.q_component_stats[s][idx][comp_ac_idx]) / tree.coordination_stats.n_component_stats[s][idx][comp_ac_idx]
+        end
+    end    
+end
+
+
+function init_statistics!(tree::FVMCTSTree{S,A,VarElStatistics{S}}, planner::FVMCTSPlanner,
+                          s::S) where {S,A}
 
     n_comps = length(tree.coordination_stats.coord_graph_components)
     n_component_stats = Vector{Vector{Int64}}(undef, n_comps)
