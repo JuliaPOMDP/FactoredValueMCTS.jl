@@ -233,7 +233,7 @@ function update_statistics!(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,VarElStatis
         # NOTE: NOW we can update stats. Could generalize incremental update more here
         lock(tree.lock) do
             tree.coordination_stats.n_component_stats[s][idx][comp_ac_idx] += 1
-            q_comp_value = sum(q[c] for c in comp) # TODO!!!
+            q_comp_value = sum(q[c] for c in comp) 
             tree.coordination_stats.q_component_stats[s][idx][comp_ac_idx] +=
                 (q_comp_value - tree.coordination_stats.q_component_stats[s][idx][comp_ac_idx]) / tree.coordination_stats.n_component_stats[s][idx][comp_ac_idx]
         end
@@ -261,7 +261,7 @@ function update_statistics!(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,VarElStatis
         # NOTE: NOW we can update stats. Could generalize incremental update more here
         lock(tree.lock) do
             tree.coordination_stats.n_component_stats[s][idx][comp_ac_idx] += 1
-            q_comp_value = q # TODO!!!
+            q_comp_value = q * length(comp) # Maintains equivalence with `sum(q[c] for c in comp)`
             tree.coordination_stats.q_component_stats[s][idx][comp_ac_idx] +=
                 (q_comp_value - tree.coordination_stats.q_component_stats[s][idx][comp_ac_idx]) / tree.coordination_stats.n_component_stats[s][idx][comp_ac_idx]
         end

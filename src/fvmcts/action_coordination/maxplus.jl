@@ -46,6 +46,12 @@ function clear_statistics!(mp_stats::MaxPlusStatistics)
     empty!(mp_stats.all_states_stats)
 end
 
+function update_statistics!(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,MaxPlusStatistics{S}},
+                            s::S, ucb_action::A, q::AbstractFloat) where {S,A}
+
+    update_statistics!(mdp, tree, s, ucb_action, ones(typeof(q), n_agents(mdp)) * q)
+end
+
 """
 Take the q-value from the MCTS step and distribute the updates across the per-node and per-edge q-stats as per the formula in our paper.
 """
@@ -53,10 +59,10 @@ function update_statistics!(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,MaxPlusStat
                             s::S, ucb_action::A, q::AbstractVector{Float64}) where {S,A}
 
     state_stats = tree.coordination_stats.all_states_stats[s]
-    n_agents = length(s)
+    nagents = n_agents(mdp)
 
     # Update per agent action stats
-    for i = 1:n_agents
+    for i = 1:nagents
         ac_idx = agent_actionindex(mdp, i, ucb_action[i])
         lock(tree.lock) do
             state_stats.agent_action_n[i, ac_idx] += 1
@@ -207,7 +213,6 @@ function coordinate_action(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,MaxPlusStati
     end # for t = 1:k
 
     # If edge exploration flag enabled, do a final exploration bonus
-    # TODO: Code reuse with normal message passing; consider modularizing
     if tree.coordination_stats.edge_exploration
         perform_message_passing!(fwd_messages, bwd_messages, mdp, tree.all_agent_actions,
                                  adjgraphmat, state_agent_actions, n_edges, q_values, message_norm,
@@ -279,6 +284,7 @@ function perform_message_passing!(fwd_messages::AbstractArray{F,2}, bwd_messages
             bwd_messages[e_idx, ai_idx] = maximum(bwd_message_vals)
         end
 
+        # Normalize messages for better convergence
         if message_norm
             @views fwd_messages[e_idx, :] .-= sum(fwd_messages[e_idx, :])/length(fwd_messages[e_idx, :])
             @views bwd_messages[e_idx, :] .-= sum(bwd_messages[e_idx, :])/length(bwd_messages[e_idx, :])
