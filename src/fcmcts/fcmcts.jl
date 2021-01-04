@@ -263,7 +263,7 @@ end
     mdp = planner.mdp
     P = typeof(mdp)
     @assert P <: JointMDP       # req does different thing?
-    #SV = statetype(P)
+    SV = statetype(P)
     #@assert typeof(SV) <: AbstractVector # TODO: Is this correct?
     AV = actiontype(P)
     @assert typeof(AV) <: AbstractVector
@@ -271,7 +271,7 @@ end
     @req isterminal(::P, ::SV)
     @subreq insert_node!(planner.tree, planner, s)
     @subreq estimate_value(planner.solved_estimate, mdp, s, depth)
-    @req gen(::DDNOut{(:sp, :r)}, ::P, ::SV, ::AV, ::typeof(planner.rng))
+    @req gen(::P, ::SV, ::AV, ::typeof(planner.rng)) # XXX this is not exactly right - it could be satisfied with transition
 
     # MMDP reqs
     @req agent_actions(::P, ::Int64)

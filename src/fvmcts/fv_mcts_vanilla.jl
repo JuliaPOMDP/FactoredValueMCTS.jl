@@ -349,7 +349,7 @@ end
     mdp = planner.mdp
     P = typeof(mdp)
     @assert P <: JointMDP
-    #SV = statetype(P)
+    SV = statetype(P)
     #@assert typeof(SV) <: AbstractVector
     AV = actiontype(P)
     @assert typeof(A) <: AbstractVector
@@ -357,7 +357,7 @@ end
     @req isterminal(::P, ::SV)
     @subreq insert_node!(planner.tree, planner, s)
     @subreq estimate_value(planner.solved_estimate, mdp, s, depth)
-    @req gen(::DDNOut{(:sp, :r)}, ::P, ::SV, ::A, ::typeof(planner.rng))
+    @req gen(::P, ::SV, ::A, ::typeof(planner.rng)) # XXX this is not exactly right - it could be satisfied with transition
 
     ## Requirements from MMDP Model
     @req agent_actions(::P, ::Int64)
