@@ -221,7 +221,7 @@ function coordinate_action(mdp::JointMDP{S,A}, tree::FVMCTSTree{S,A,MaxPlusStati
 
 
     # Maximize q values for agents
-    best_action = Vector{A}(undef, n_agents)
+    best_action = Vector{eltype(A)}(undef, n_agents)
     for i = 1:n_agents
 
         # NOTE: Again can't just iterate over agent actions as it may be a subset

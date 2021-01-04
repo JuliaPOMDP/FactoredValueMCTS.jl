@@ -14,6 +14,46 @@ using BeliefUpdaters
 using MCTS: convert_estimator
 import POMDPModelTools
 
+using POMDPSimulators: RolloutSimulator
+import POMDPs
+
+function POMDPs.simulate(sim::RolloutSimulator, mdp::JointMDP, policy::Policy, initialstate::S) where {S}
+
+    if sim.eps == nothing
+        eps = 0.0
+    else
+        eps = sim.eps
+    end
+
+    if sim.max_steps == nothing
+        max_steps = typemax(Int)
+    else
+        max_steps = sim.max_steps
+    end
+
+    s = initialstate
+
+    disc = 1.0
+    r_total = zeros(n_agents(mdp))
+    step = 1
+
+    while disc > eps && !isterminal(mdp, s) && step <= max_steps
+        a = action(policy, s)
+
+        sp, r = @gen(:sp, :r)(mdp, s, a, sim.rng)
+
+        r_total .+= disc.*r
+
+        s = sp
+
+        disc *= discount(mdp)
+        step += 1
+    end
+
+    return r_total
+end
+
+
 ### 
 # Factored Value MCTS
 #
