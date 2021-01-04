@@ -264,6 +264,7 @@ end
     P = typeof(mdp)
     @assert P <: JointMDP       # req does different thing?
     SV = statetype(P)
+    @req iterate(::SV)
     #@assert typeof(SV) <: AbstractVector # TODO: Is this correct?
     AV = actiontype(P)
     @assert typeof(AV) <: AbstractVector

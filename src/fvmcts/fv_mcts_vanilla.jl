@@ -350,6 +350,7 @@ end
     P = typeof(mdp)
     @assert P <: JointMDP
     SV = statetype(P)
+    @req iterate(::SV)
     #@assert typeof(SV) <: AbstractVector
     AV = actiontype(P)
     @assert typeof(A) <: AbstractVector
