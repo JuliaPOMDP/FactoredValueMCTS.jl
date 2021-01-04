@@ -17,6 +17,7 @@ import POMDPModelTools
 using POMDPSimulators: RolloutSimulator
 import POMDPs
 
+# Patch simulate to support vector of rewards
 function POMDPs.simulate(sim::RolloutSimulator, mdp::JointMDP, policy::Policy, initialstate::S) where {S}
 
     if sim.eps == nothing
@@ -33,10 +34,21 @@ function POMDPs.simulate(sim::RolloutSimulator, mdp::JointMDP, policy::Policy, i
 
     s = initialstate
 
-    disc = 1.0
-    r_total = zeros(n_agents(mdp))
-    step = 1
+    
+    # TODO: doesn't this add unnecessary action search?
+    r = @gen(:r)(mdp, s, action(policy, s), sim.rng)
+    if r isa AbstractVector
+        r_total = zeros(n_agents(mdp))
+    else
+        r_total = 0.0
+    end
+    sim_helper!(r_total, sim, mdp, policy, s, max_steps, eps)
+    return r_total
+end
 
+function sim_helper!(r_total::AbstractVector{F}, sim, mdp, policy, s, max_steps, eps) where {F}
+    step = 1
+    disc = 1.0
     while disc > eps && !isterminal(mdp, s) && step <= max_steps
         a = action(policy, s)
 
@@ -50,7 +62,24 @@ function POMDPs.simulate(sim::RolloutSimulator, mdp::JointMDP, policy::Policy, i
         step += 1
     end
 
-    return r_total
+end
+
+function sim_helper!(r_total::AbstractFloat, sim, mdp, policy, s, max_steps, eps)
+    step = 1
+    disc = 1.0
+    while disc > eps && !isterminal(mdp, s) && step <= max_steps
+        a = action(policy, s)
+
+        sp, r = @gen(:sp, :r)(mdp, s, a, sim.rng)
+
+        r_total += disc.*r
+
+        s = sp
+
+        disc *= discount(mdp)
+        step += 1
+    end
+
 end
 
 
