@@ -353,12 +353,12 @@ end
     @req iterate(::SV)
     #@assert typeof(SV) <: AbstractVector
     AV = actiontype(P)
-    @assert typeof(A) <: AbstractVector
+    @assert typeof(AV) <: AbstractVector
     @req discount(::P)
     @req isterminal(::P, ::SV)
     @subreq insert_node!(planner.tree, planner, s)
     @subreq estimate_value(planner.solved_estimate, mdp, s, depth)
-    @req gen(::P, ::SV, ::A, ::typeof(planner.rng)) # XXX this is not exactly right - it could be satisfied with transition
+    @req gen(::P, ::SV, ::AV, ::typeof(planner.rng)) # XXX this is not exactly right - it could be satisfied with transition
 
     ## Requirements from MMDP Model
     @req agent_actions(::P, ::Int64)
