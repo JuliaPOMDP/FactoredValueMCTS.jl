@@ -1,4 +1,4 @@
-module MAMCTS
+module FactoredValueMCTS
 
 using Random
 using LinearAlgebra
@@ -99,16 +99,5 @@ export
     MaxPlus,
     VarEl
 
-###
-
-###
-# Naive Fully Connected Centralized MCTS
-#
-
-include(joinpath("fcmcts", "fcmcts.jl"))
-export 
-    FCMCTSSolver
-
-###
 
 end

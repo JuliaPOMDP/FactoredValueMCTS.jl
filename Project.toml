@@ -1,4 +1,4 @@
-name = "MAMCTS"
+name = "FactoredValueMCTS"
 uuid = "c016a6d7-1193-47d7-896a-d9f14d6b4b26"
 authors = ["Stanford Intelligent Systems Laboratory"]
 version = "0.1.0"

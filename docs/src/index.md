@@ -1,12 +1,12 @@
 ```@meta
-CurrentModule = MAMCTS
+CurrentModule = FactoredValueMCTS
 ```
 
-# MAMCTS
+# FactoredValueMCTS
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [MAMCTS]
+Modules = [FactoredValueMCTS]
 ```

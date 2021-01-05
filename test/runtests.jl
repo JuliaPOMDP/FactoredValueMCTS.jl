@@ -1,11 +1,11 @@
-using MAMCTS
+using FactoredValueMCTS
 using Test
 
 using POMDPs
 using MultiAgentSysAdmin
 using MultiUAVDelivery
 
-@testset "MAMCTS.jl" begin
+@testset "FactoredValueMCTS.jl" begin
 
     @testset "varel" begin
         @testset "sysadmin" begin
