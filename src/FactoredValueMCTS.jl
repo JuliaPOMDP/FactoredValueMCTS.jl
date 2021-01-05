@@ -20,13 +20,13 @@ import POMDPs
 # Patch simulate to support vector of rewards
 function POMDPs.simulate(sim::RolloutSimulator, mdp::JointMDP, policy::Policy, initialstate::S) where {S}
 
-    if sim.eps == nothing
+    if sim.eps === nothing
         eps = 0.0
     else
         eps = sim.eps
     end
 
-    if sim.max_steps == nothing
+    if sim.max_steps === nothing
         max_steps = typemax(Int)
     else
         max_steps = sim.max_steps
