@@ -1,14 +1,14 @@
-using MAMCTS
+using FactoredValueMCTS
 using Documenter
 
 makedocs(;
-    modules=[MAMCTS],
+    modules=[FactoredValueMCTS],
     authors="Stanford Intelligent Systems Laboratory",
-    repo="https://github.com/rejuvyesh/MAMCTS.jl/blob/{commit}{path}#L{line}",
-    sitename="MAMCTS.jl",
+    repo="https://github.com/JuliaPOMDP/FactoredValueMCTS.jl/blob/{commit}{path}#L{line}",
+    sitename="FactoredValueMCTS.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://rejuvyesh.github.io/MAMCTS.jl",
+        canonical="https://JuliaPOMDP.github.io/FactoredValueMCTS.jl",
         assets=String[],
     ),
     pages=[
@@ -17,5 +17,5 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/rejuvyesh/MAMCTS.jl",
+    repo="github.com/JuliaPOMDP/FactoredValueMCTS.jl",
 )
