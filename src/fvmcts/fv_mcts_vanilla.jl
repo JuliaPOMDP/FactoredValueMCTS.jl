@@ -249,9 +249,9 @@ MCTS.init_N(n::Number, mdp::JointMDP, s, c, a) = convert(Int, n)
 # and in case of MaxPlus, the various flags for the MaxPlus behavior
 function POMDPs.solve(solver::FVMCTSSolver, mdp::JointMDP)
     if typeof(solver.coordination_strategy) == VarEl
-        return varel_joint_mcts_planner(solver, mdp, initialstate(mdp, solver.rng))
+        return varel_joint_mcts_planner(solver, mdp, rand(solver.rng, initialstate(mdp)))
     elseif typeof(solver.coordination_strategy) == MaxPlus
-        return maxplus_joint_mcts_planner(solver, mdp, initialstate(mdp, solver.rng),
+        return maxplus_joint_mcts_planner(solver, mdp, rand(solver.rng, initialstate(mdp)),
                                           solver.coordination_strategy.message_iters,
                                           solver.coordination_strategy.message_norm,
                                           solver.coordination_strategy.use_agent_utils,

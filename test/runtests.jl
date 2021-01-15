@@ -2,12 +2,13 @@ using FactoredValueMCTS
 using Test
 
 using POMDPs
-using MultiAgentSysAdmin
+# using MultiAgentSysAdmin
 using MultiUAVDelivery
 
 @testset "FactoredValueMCTS.jl" begin
 
     @testset "varel" begin
+#=     
         @testset "sysadmin" begin
 
             @testset "local" begin
@@ -29,10 +30,11 @@ using MultiUAVDelivery
                 @test a isa actiontype(mdp)
             end
         end
+        =#
     end    
 
     @testset "maxplus" begin
-        @testset "sysadmin" begin
+ #=        @testset "sysadmin" begin
 
             @testset "local" begin
                 mdp = BiSysAdmin()
@@ -53,7 +55,7 @@ using MultiUAVDelivery
                 @test a isa actiontype(mdp)
             end
         end
-
+ =#
         @testset "uav" begin
             mdp = FirstOrderMultiUAVDelivery()
             solver = FVMCTSSolver(;coordination_strategy=MaxPlus())
