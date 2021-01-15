@@ -1,5 +1,4 @@
 using StaticArrays
-using Parameters
 using Base.Threads: @spawn
 
 abstract type AbstractCoordinationStrategy end
