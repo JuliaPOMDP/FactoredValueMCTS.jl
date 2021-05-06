@@ -9,7 +9,7 @@ This package implements the Monte Carlo Tree Search (MCTS) planning algorithm fo
 
 The full FV-MCTS-MaxPlus algorithm is described in our AAMAS 2021 paper _Scalable Anytime Planning for Multi-Agent MDPs_ ([Arxiv](https://arxiv.org/abs/2101.04788)). The FV-MCTS-Varel is based on the Factored Statistics algorithm from the AAAI 2015 paper _Scalable Planning and Learning from Multi-Agent POMDPs_ ([Extended Version](https://arxiv.org/abs/1404.1140)) applied to Multi-Agent MDPs rather than POMDPs. We use the latter as a baseline and show how the former outperforms it on two distinct simulated domains.
 
-To use our solver, the domain must implement the interface from [MultiAgentPOMDPs.jl](https://github.com/JuliaPOMDP/MultiAgentPOMDPs.jl). For examples, please see [MultiAgentSysAdmin](https://github.com/JuliaPOMDP/MultiAgentSysAdmin.jl) and [MultiUAVDelivery](https://github.com/JuliaPOMDP/MultiUAVDelivery.jl), which are the two domains from our AAMAS 2021 paper.
+To use our solver, the domain must implement the interface from [MultiAgentPOMDPs.jl](https://github.com/JuliaPOMDP/MultiAgentPOMDPs.jl). For examples, please see [MultiAgentSysAdmin](https://github.com/JuliaPOMDP/MultiAgentSysAdmin.jl) and [MultiUAVDelivery](https://github.com/JuliaPOMDP/MultiUAVDelivery.jl), which are the two domains from our AAMAS 2021 paper. Experiments from the paper are available at https://github.com/rejuvyesh/FVMCTS_experiments.
 
 ## Installation
 
