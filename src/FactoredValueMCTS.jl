@@ -4,18 +4,13 @@ using Random
 using LinearAlgebra
 
 using POMDPs
+using POMDPTools
 using MultiAgentPOMDPs
-using POMDPPolicies
 using POMDPLinter: @req, @subreq, @POMDP_require
 using MCTS
-using LightGraphs
-using BeliefUpdaters
-
+using Graphs
 using MCTS: convert_estimator
-import POMDPModelTools
 
-using POMDPSimulators: RolloutSimulator
-import POMDPs
 
 # Patch simulate to support vector of rewards
 function POMDPs.simulate(sim::RolloutSimulator, mdp::JointMDP, policy::Policy, initialstate::S) where {S}

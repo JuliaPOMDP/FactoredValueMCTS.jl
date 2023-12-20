@@ -271,7 +271,7 @@ function POMDPs.action(planner::FVMCTSPlanner, s)
     return action
 end
 
-function POMDPModelTools.action_info(planner::FVMCTSPlanner, s)
+function POMDPTools.action_info(planner::FVMCTSPlanner, s)
     clear_tree!(planner) # Always call this at the top
     plan!(planner, s)
     action = coordinate_action(planner.mdp, planner.tree, s)
