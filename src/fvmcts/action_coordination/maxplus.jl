@@ -12,7 +12,7 @@ the joint action in Factored-Value MCTS. Putting parameters here is a little ugl
 
 Fields:
     adjmatgraph::SimpleGraph
-        The coordination graph as a LightGraphs SimpleGraph.
+        The coordination graph as a Graphs SimpleGraph.
     
     message_iters::Int64
         Number of rounds of message passing.

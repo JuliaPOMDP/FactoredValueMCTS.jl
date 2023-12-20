@@ -1,9 +1,9 @@
 # FactoredValueMCTS
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaPOMDP.github.io/FactoredValueMCTS.jl/stable)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaPOMDP.github.io/FactoredValueMCTS.jl/dev)
-[![Build Status](https://github.com/JuliaPOMDP/FactoredValueMCTS.jl/workflows/CI/badge.svg)](https://github.com/JuliaPOMDP/FactoredValueMCTS.jl/actions)
-[![Coverage](https://codecov.io/gh/JuliaPOMDP/FactoredValueMCTS.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaPOMDP/FactoredValueMCTS.jl)
+[![CI](https://github.com/JuliaPOMDP/FactoredValueMCTS.jl/actions/workflows/ci.yml/badge.svg)](https://github.com/JuliaPOMDP/FactoredValueMCTS.jl/actions/workflows/ci.yml)
+[![codecov.io](http://codecov.io/github/JuliaPOMDP/FactoredValueMCTS.jl/coverage.svg?branch=master)](http://codecov.io/github/JuliaPOMDP/FactoredValueMCTS.jl?branch=master)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://juliapomdp.github.io/FactoredValueMCTS.jl/stable)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://juliapomdp.github.io/FactoredValueMCTS.jl/dev)
 
 This package implements the Monte Carlo Tree Search (MCTS) planning algorithm for Multi-Agent MDPs. The algorithm factorizes the true action value function, based on the locality of interactions between agents that is encoded with a Coordination Graph. We implement two schemes for coordinating the actions for the team of agents during the MCTS computations. The first is the iterative message-passing MaxPlus, while the second is the exact Variable Elimination. We thus get two different Factored Value MCTS algorithms, FV-MCTS-MaxPlus and FV-MCTS-VarEl respectively.
 
@@ -13,7 +13,17 @@ To use our solver, the domain must implement the interface from [MultiAgentPOMDP
 
 ## Installation
 
-In the Julia REPL, just do:
 ```julia
-] add FactoredValueMCTS
+using Pkg
+Pkg.add("FactoredValueMCTS")
+```
+## Citation
+
+```
+@inproceedings{choudhury2021scalable,
+    title={Scalable Anytime Planning for Multi-Agent {MDP}s},
+    author={Shushman Choudhury and Jayesh K Gupta and Peter Morales and Mykel J Kochenderfer},
+    booktitle={International Conference on Autonomous Agents and MultiAgent Systems},
+    year={2021}
+}
 ```

@@ -1,9 +1,8 @@
-using FactoredValueMCTS
-using Test
-
 using POMDPs
+using FactoredValueMCTS
 using MultiAgentSysAdmin
 using MultiUAVDelivery
+using Test
 
 @testset "FactoredValueMCTS.jl" begin
 
